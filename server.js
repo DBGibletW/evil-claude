@@ -63,7 +63,7 @@ app.post("/api/chat", async (req, res) => {
         "X-Title": "Evil Claude"
       },
       body: JSON.stringify({
-        model: "thinkingmachines/inkling-2-small:free", // Listeden seçilen model
+        model: "openrouter/free", // Otomatik yönlendirici
         messages: messages,
         stream: true
       }),
@@ -132,4 +132,4 @@ app.get("/login", (req, res) => res.sendFile(path.join(__dirname, "public", "ind
 app.get("/app", (req, res) => res.sendFile(path.join(__dirname, "public", "app.html")));
 app.get("/", (req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
 
-app.listen(PORT, () => console.log(`Sunucu OpenRouter (Inkling) ile çalışıyor: ${PORT}`));
+app.listen(PORT, () => console.log(`Sunucu OpenRouter (Free Router) ile çalışıyor: ${PORT}`));
