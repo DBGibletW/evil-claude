@@ -17,7 +17,7 @@ app.post("/api/chat", async (req, res) => {
   let { message, history } = req.body;
   if (!message) return res.status(400).json({ error: "Mesaj yok" });
 
-  // System Prompt: Dolphin modeli zaten sansürsüz olduğu için uzun ve agresif promptlara gerek yok.
+  // System Prompt (Sansürsüz modele geçtiğimiz için kısa ve net)
   const messages = [
     { 
       role: "system", 
@@ -42,7 +42,7 @@ app.post("/api/chat", async (req, res) => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30000);
 
-    // OPENROUTER API VE SANDSÜRSÜZ DOLPHIN MODELİ
+    // YENİ MODEL: Arcee Trinity (Sansürsüz)
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -52,7 +52,7 @@ app.post("/api/chat", async (req, res) => {
         "X-Title": "Evil Claude"
       },
       body: JSON.stringify({
-        model: "cognitivecomputations/dolphin-mixtral-8x22b", // SANDSÜRSÜZ MODEL
+        model: "arcee-ai/trinity-large-preview:free", // YENİ SANDSÜRSÜZ MODEL
         messages: messages,
         stream: true
       }),
@@ -121,4 +121,4 @@ app.get("/login", (req, res) => res.sendFile(path.join(__dirname, "public", "ind
 app.get("/app", (req, res) => res.sendFile(path.join(__dirname, "public", "app.html")));
 app.get("/", (req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
 
-app.listen(PORT, () => console.log(`Sunucu OpenRouter (Dolphin) ile çalışıyor: ${PORT}`));
+app.listen(PORT, () => console.log(`Sunucu OpenRouter (Trinity) ile çalışıyor: ${PORT}`));
