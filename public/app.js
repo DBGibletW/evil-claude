@@ -1,6 +1,6 @@
 import { auth, db } from "./firebase.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { collection, addDoc, getDocs, doc, query, where, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { collection, addDoc, getDocs, query, where, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const chat = document.getElementById("chat");
 const welcome = document.getElementById("welcome");
@@ -16,7 +16,7 @@ const chatList = document.getElementById("chatList");
 const userName = document.getElementById("userName");
 const main = document.querySelector(".main");
 
-const CLAUDE_LOGO = "https://i.imgur.com/obAoU6e.png";
+const CLAUDE_LOGO = "https://i.imgur.com/obAoU6e.png"; // DÜZELTİLDİ
 let currentUser = null, currentChatId = null, isGenerating = false;
 
 function scrollToBottom() { main.scrollTop = main.scrollHeight; }
@@ -61,7 +61,10 @@ async function loadChat(chatId) {
   if (isGenerating) return;
   currentChatId = chatId; chat.innerHTML = ""; welcome.classList.add("hidden");
   const msgSnap = await getDocs(collection(db, "chats", chatId, "messages"));
-  msgSnap.forEach((d) => { const m = d.data(); addMessage(m.role, m.text); });
+  const msgs = [];
+  msgSnap.forEach((d) => msgs.push(d.data()));
+  msgs.sort((a, b) => (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0));
+  msgs.forEach((m) => addMessage(m.role, m.text));
 }
 
 async function sendMessage() {
@@ -76,6 +79,12 @@ async function sendMessage() {
     currentChatId = docRef.id;
   }
 
+  // Yeni mesajı eklemeden önce geçmişi kronolojik olarak al
+  const historySnap = await getDocs(collection(db, "chats", currentChatId, "messages"));
+  const history = [];
+  historySnap.forEach((d) => history.push(d.data()));
+  history.sort((a, b) => (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0));
+
   await addDoc(collection(db, "chats", currentChatId, "messages"), { role: "user", text, timestamp: serverTimestamp() });
 
   const aiMsgEl = document.createElement("div");
@@ -87,15 +96,16 @@ async function sendMessage() {
   chat.appendChild(aiMsgEl); scrollToBottom();
 
   try {
-    const historySnap = await getDocs(collection(db, "chats", currentChatId, "messages"));
-    const history = []; historySnap.forEach((d) => history.push(d.data()));
-
     const response = await fetch("/api/chat", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: text, history: history.slice(0, -1) })
+      body: JSON.stringify({ message: text, history: history })
     });
 
-    if (!response.ok) throw new Error("Sunucu hatası: " + response.status);
+    if (!response.ok) {
+      const errJson = await response.json().catch(() => ({}));
+      throw new Error(errJson.error || "Sunucu hatası: " + response.status);
+    }
+
     const reader = response.body.getReader(); const decoder = new TextDecoder();
     let buffer = "", fullText = "";
     const bodyDiv = aiMsgEl.querySelector(".body");
@@ -121,7 +131,9 @@ async function sendMessage() {
       }
     }
     answerP.innerHTML = fullText.replace(/\n/g, "<br>");
-    await addDoc(collection(db, "chats", currentChatId, "messages"), { role: "ai", text: fullText, timestamp: serverTimestamp() });
+    if (fullText.trim()) {
+      await addDoc(collection(db, "chats", currentChatId, "messages"), { role: "ai", text: fullText, timestamp: serverTimestamp() });
+    }
   } catch (err) {
     aiMsgEl.querySelector(".chat__bubble").innerHTML = `<span style="color:#d97757">HATA: ${err.message}</span>`;
   } finally { isGenerating = false; }
