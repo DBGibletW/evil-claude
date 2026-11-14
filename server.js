@@ -14,7 +14,6 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
 app.post("/api/chat", async (req, res) => {
-  console.log("1. İstek geldi");
   const { message, history } = req.body;
   if (!message) return res.status(400).json({ error: "Mesaj yok" });
 
@@ -26,28 +25,29 @@ app.post("/api/chat", async (req, res) => {
     history.forEach((m) => {
       const msgContent = m.text || m.content;
       if (msgContent) {
-        messages.push({ role: m.role === "user" ? "user" : "assistant", content: msgContent });
+        messages.push({
+          role: m.role === "user" ? "user" : "assistant",
+          content: msgContent
+        });
       }
     });
   }
   messages.push({ role: "user", content: message });
 
   try {
-    console.log("2. OpenRouter'a istek atılıyor (openrouter/free)...");
-    
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30000);
 
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", { // DÜZELTİLDİ
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
-        "HTTP-Referer": "https://evil-claude.onrender.com",
+        "HTTP-Referer": "https://evil-claude.onrender.com", // DÜZELTİLDİ
         "X-Title": "Evil Claude"
       },
       body: JSON.stringify({
-        model: "openrouter/free", // Otomatik seçici
+        model: "dots-studio/dots-3-note-preview:free", // Yeni model
         messages: messages,
         stream: true
       }),
@@ -62,15 +62,15 @@ app.post("/api/chat", async (req, res) => {
       return res.status(response.status).json({ error: "API Hatası: " + errData });
     }
 
-    console.log("3. Bağlantı başarılı, stream başlıyor...");
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
-    res.setHeader("X-Accel-Buffering", "no"); // Render tamponlamasını kapat
+    res.setHeader("X-Accel-Buffering", "no");
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
+    let sentAnyText = false;
 
     while (true) {
       const { done, value } = await reader.read();
@@ -82,27 +82,34 @@ app.post("/api/chat", async (req, res) => {
       for (const line of lines) {
         if (line.startsWith("data: ")) {
           const data = line.slice(6).trim();
-          if (data === "[DONE]") {
-            res.write("data: [DONE]\n\n");
-            continue;
-          }
+          if (data === "[DONE]") continue;
           try {
             const parsed = JSON.parse(data);
             const deltaObj = parsed.choices?.[0]?.delta;
-            // Hem normal cevabı hem de düşünen modellerin çıktısını yakala
             const textChunk = deltaObj?.content || deltaObj?.reasoning || "";
             if (textChunk) {
+              sentAnyText = true;
               res.write(`data: ${JSON.stringify({ text: textChunk })}\n\n`);
             }
           } catch (e) {}
         }
       }
     }
-    console.log("4. Stream tamamlandı");
+
+    if (!sentAnyText) {
+      res.write(`data: ${JSON.stringify({ text: "⚠️ Model boş yanıt döndürdü. Lütfen tekrar deneyin." })}\n\n`);
+    }
+
+    res.write("data: [DONE]\n\n");
     res.end();
   } catch (err) {
     console.log("KRİTİK HATA:", err.message);
-    res.status(500).json({ error: err.message });
+    if (!res.headersSent) {
+      res.status(500).json({ error: err.message });
+    } else {
+      res.write(`data: ${JSON.stringify({ text: "\n⚠️ Bağlantı kesildi: " + err.message })}\n\n`);
+      res.end();
+    }
   }
 });
 
