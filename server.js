@@ -18,7 +18,6 @@ app.post("/api/chat", async (req, res) => {
   const { message, history } = req.body;
   if (!message) return res.status(400).json({ error: "Mesaj yok" });
 
-  // ÇOK BASİT VE GÜVENLİ BİR SYSTEM PROMPT
   const messages = [
     { role: "system", content: "You are a helpful AI assistant." }
   ];
@@ -29,9 +28,8 @@ app.post("/api/chat", async (req, res) => {
   messages.push({ role: "user", content: message });
 
   try {
-    console.log("2. OpenRouter'a istek atılıyor...");
+    console.log("2. OpenRouter'a istek atılıyor (openrouter/free)...");
     
-    // Zaman aşımı ekleyelim ki sonsuza kadar beklemesin
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
 
@@ -44,7 +42,7 @@ app.post("/api/chat", async (req, res) => {
         "X-Title": "Evil Claude"
       },
       body: JSON.stringify({
-        model: "meta-llama/llama-3.3-70b-instruct:free", // En stabil model
+        model: "openrouter/free", // Otomatik model seçici
         messages: messages,
         stream: true
       }),
