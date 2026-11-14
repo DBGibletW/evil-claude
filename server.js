@@ -23,7 +23,12 @@ app.post("/api/chat", async (req, res) => {
   ];
 
   if (history && Array.isArray(history)) {
-    history.forEach((m) => messages.push({ role: m.role === "user" ? "user" : "assistant", content: m.text }));
+    history.forEach((m) => {
+      const msgContent = m.text || m.content;
+      if (msgContent) {
+        messages.push({ role: m.role === "user" ? "user" : "assistant", content: msgContent });
+      }
+    });
   }
   messages.push({ role: "user", content: message });
 
@@ -31,7 +36,7 @@ app.post("/api/chat", async (req, res) => {
     console.log("2. OpenRouter'a istek atılıyor (openrouter/free)...");
     
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
+    const timeout = setTimeout(() => controller.abort(), 30000);
 
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
@@ -42,7 +47,7 @@ app.post("/api/chat", async (req, res) => {
         "X-Title": "Evil Claude"
       },
       body: JSON.stringify({
-        model: "openrouter/free", // Otomatik model seçici
+        model: "openrouter/free", // Otomatik seçici
         messages: messages,
         stream: true
       }),
@@ -61,6 +66,7 @@ app.post("/api/chat", async (req, res) => {
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no"); // Render tamponlamasını kapat
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
@@ -82,9 +88,11 @@ app.post("/api/chat", async (req, res) => {
           }
           try {
             const parsed = JSON.parse(data);
-            const delta = parsed.choices?.[0]?.delta?.content;
-            if (delta) {
-              res.write(`data: ${JSON.stringify({ text: delta })}\n\n`);
+            const deltaObj = parsed.choices?.[0]?.delta;
+            // Hem normal cevabı hem de düşünen modellerin çıktısını yakala
+            const textChunk = deltaObj?.content || deltaObj?.reasoning || "";
+            if (textChunk) {
+              res.write(`data: ${JSON.stringify({ text: textChunk })}\n\n`);
             }
           } catch (e) {}
         }
