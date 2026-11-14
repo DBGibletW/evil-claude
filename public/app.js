@@ -16,7 +16,7 @@ const chatList = document.getElementById("chatList");
 const userName = document.getElementById("userName");
 const main = document.querySelector(".main");
 
-const CLAUDE_LOGO = "https://i.imgur.com/obAoU6e.png"; // DÜZELTİLDİ
+const CLAUDE_LOGO = "https://i.imgur.com/obAoU6e.png";
 let currentUser = null, currentChatId = null, isGenerating = false;
 
 function scrollToBottom() { main.scrollTop = main.scrollHeight; }
@@ -71,21 +71,23 @@ async function sendMessage() {
   const text = promptInput.value.trim();
   if (!text || !currentUser || isGenerating) return;
 
-  isGenerating = true; welcome.classList.add("hidden"); promptInput.value = ""; sendBtn.classList.remove("visible");
+  isGenerating = true; 
+  welcome.classList.add("hidden"); 
+  promptInput.value = ""; 
+  sendBtn.classList.remove("visible");
+  
   addMessage("user", text);
 
-  if (!currentChatId) {
-    const docRef = await addDoc(collection(db, "chats"), { uid: currentUser.uid, title: text.slice(0, 40), createdAt: serverTimestamp() });
-    currentChatId = docRef.id;
+  // FİRESTORE KİLİTLENMESİNİ ÇÖZEN KISIM (Arka planda çalışır)
+  try {
+    if (!currentChatId) {
+      const docRef = await addDoc(collection(db, "chats"), { uid: currentUser.uid, title: text.slice(0, 40), createdAt: serverTimestamp() });
+      currentChatId = docRef.id;
+    }
+    await addDoc(collection(db, "chats", currentChatId, "messages"), { role: "user", text, timestamp: serverTimestamp() });
+  } catch (dbErr) {
+    console.error("Firestore kayıt hatası (sohbet devam ediyor):", dbErr);
   }
-
-  // Yeni mesajı eklemeden önce geçmişi kronolojik olarak al
-  const historySnap = await getDocs(collection(db, "chats", currentChatId, "messages"));
-  const history = [];
-  historySnap.forEach((d) => history.push(d.data()));
-  history.sort((a, b) => (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0));
-
-  await addDoc(collection(db, "chats", currentChatId, "messages"), { role: "user", text, timestamp: serverTimestamp() });
 
   const aiMsgEl = document.createElement("div");
   aiMsgEl.className = "chat__msg chat__msg--ai";
@@ -96,6 +98,11 @@ async function sendMessage() {
   chat.appendChild(aiMsgEl); scrollToBottom();
 
   try {
+    const historySnap = await getDocs(collection(db, "chats", currentChatId, "messages"));
+    const history = [];
+    historySnap.forEach((d) => history.push(d.data()));
+    history.sort((a, b) => (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0));
+
     const response = await fetch("/api/chat", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message: text, history: history })
@@ -131,9 +138,15 @@ async function sendMessage() {
       }
     }
     answerP.innerHTML = fullText.replace(/\n/g, "<br>");
-    if (fullText.trim()) {
-      await addDoc(collection(db, "chats", currentChatId, "messages"), { role: "ai", text: fullText, timestamp: serverTimestamp() });
+    
+    try {
+      if (fullText.trim()) {
+        await addDoc(collection(db, "chats", currentChatId, "messages"), { role: "ai", text: fullText, timestamp: serverTimestamp() });
+      }
+    } catch (dbErr) {
+      console.error("AI yanıtı kaydedilemedi:", dbErr);
     }
+    
   } catch (err) {
     aiMsgEl.querySelector(".chat__bubble").innerHTML = `<span style="color:#d97757">HATA: ${err.message}</span>`;
   } finally { isGenerating = false; }
