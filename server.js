@@ -38,25 +38,24 @@ app.post("/api/chat", async (req, res) => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30000);
 
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", { // DÜZELTİLDİ
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
-        "HTTP-Referer": "https://evil-claude.onrender.com", // DÜZELTİLDİ
+        "HTTP-Referer": "https://evil-claude.onrender.com",
         "X-Title": "Evil Claude"
       },
       body: JSON.stringify({
-        model: "dots-studio/dots-3-note-preview:free", // Yeni model
+        model: "dots-studio/dots-3-note-preview:free",
         messages: messages,
         stream: true
       }),
       signal: controller.signal
     });
 
-    clearTimeout(timeout);
-
     if (!response.ok) {
+      clearTimeout(timeout);
       const errData = await response.text();
       console.log("OPENROUTER HATASI:", errData);
       return res.status(response.status).json({ error: "API Hatası: " + errData });
@@ -85,7 +84,8 @@ app.post("/api/chat", async (req, res) => {
           if (data === "[DONE]") continue;
           try {
             const parsed = JSON.parse(data);
-            const deltaObj = parsed.choices?.[0]?.delta;
+            // KOPYALAMA HATASI BURADA GİDERİLDİ:
+            const deltaObj = parsed.choices && parsed.choices[0] ? parsed.choices[0].delta : null;
             const textChunk = deltaObj?.content || deltaObj?.reasoning || "";
             if (textChunk) {
               sentAnyText = true;
@@ -95,6 +95,8 @@ app.post("/api/chat", async (req, res) => {
         }
       }
     }
+
+    clearTimeout(timeout);
 
     if (!sentAnyText) {
       res.write(`data: ${JSON.stringify({ text: "⚠️ Model boş yanıt döndürdü. Lütfen tekrar deneyin." })}\n\n`);
