@@ -45,26 +45,30 @@ sendBtn.addEventListener("click", () => { if(!isGenerating) sendMessage(); });
 
 async function loadChats() {
   chatList.innerHTML = "";
-  const q = query(collection(db, "chats"), where("uid", "==", currentUser.uid));
-  const snap = await getDocs(q);
-  snap.forEach((d) => {
-    const c = d.data();
-    const item = document.createElement("div");
-    item.className = "sidebar__recent-item";
-    item.innerHTML = `<span>${c.title || "Yeni sohbet"}</span>`;
-    item.addEventListener("click", () => loadChat(d.id));
-    chatList.appendChild(item);
-  });
+  try {
+    const q = query(collection(db, "chats"), where("uid", "==", currentUser.uid));
+    const snap = await getDocs(q);
+    snap.forEach((d) => {
+      const c = d.data();
+      const item = document.createElement("div");
+      item.className = "sidebar__recent-item";
+      item.innerHTML = `<span>${c.title || "Yeni sohbet"}</span>`;
+      item.addEventListener("click", () => loadChat(d.id));
+      chatList.appendChild(item);
+    });
+  } catch(e) { console.error("Sohbetler yüklenemedi:", e); }
 }
 
 async function loadChat(chatId) {
   if (isGenerating) return;
   currentChatId = chatId; chat.innerHTML = ""; welcome.classList.add("hidden");
-  const msgSnap = await getDocs(collection(db, "chats", chatId, "messages"));
-  const msgs = [];
-  msgSnap.forEach((d) => msgs.push(d.data()));
-  msgs.sort((a, b) => (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0));
-  msgs.forEach((m) => addMessage(m.role, m.text));
+  try {
+    const msgSnap = await getDocs(collection(db, "chats", chatId, "messages"));
+    const msgs = [];
+    msgSnap.forEach((d) => msgs.push(d.data()));
+    msgs.sort((a, b) => (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0));
+    msgs.forEach((m) => addMessage(m.role, m.text));
+  } catch(e) { console.error("Sohbet geçmişi yüklenemedi:", e); }
 }
 
 async function sendMessage() {
@@ -78,15 +82,14 @@ async function sendMessage() {
   
   addMessage("user", text);
 
-  // FİRESTORE KİLİTLENMESİNİ ÇÖZEN KISIM (Arka planda çalışır)
+  // Sohbet ID'sini güvenli oluşturma
   try {
     if (!currentChatId) {
       const docRef = await addDoc(collection(db, "chats"), { uid: currentUser.uid, title: text.slice(0, 40), createdAt: serverTimestamp() });
       currentChatId = docRef.id;
     }
-    await addDoc(collection(db, "chats", currentChatId, "messages"), { role: "user", text, timestamp: serverTimestamp() });
   } catch (dbErr) {
-    console.error("Firestore kayıt hatası (sohbet devam ediyor):", dbErr);
+    console.error("Sohbet oluşturulamadı:", dbErr);
   }
 
   const aiMsgEl = document.createElement("div");
@@ -98,10 +101,19 @@ async function sendMessage() {
   chat.appendChild(aiMsgEl); scrollToBottom();
 
   try {
-    const historySnap = await getDocs(collection(db, "chats", currentChatId, "messages"));
     const history = [];
-    historySnap.forEach((d) => history.push(d.data()));
-    history.sort((a, b) => (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0));
+    // Sadece currentChatId varsa geçmişi çek ve mesajı kaydet (Çökme koruması)
+    if (currentChatId) {
+      try {
+        const historySnap = await getDocs(collection(db, "chats", currentChatId, "messages"));
+        historySnap.forEach((d) => history.push(d.data()));
+        history.sort((a, b) => (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0));
+        
+        await addDoc(collection(db, "chats", currentChatId, "messages"), { role: "user", text, timestamp: serverTimestamp() });
+      } catch (dbErr) {
+        console.error("Mesaj kaydedilemedi:", dbErr);
+      }
+    }
 
     const response = await fetch("/api/chat", {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -139,12 +151,9 @@ async function sendMessage() {
     }
     answerP.innerHTML = fullText.replace(/\n/g, "<br>");
     
-    try {
-      if (fullText.trim()) {
-        await addDoc(collection(db, "chats", currentChatId, "messages"), { role: "ai", text: fullText, timestamp: serverTimestamp() });
-      }
-    } catch (dbErr) {
-      console.error("AI yanıtı kaydedilemedi:", dbErr);
+    // AI yanıtını güvenli kaydetme
+    if (fullText.trim() && currentChatId) {
+      await addDoc(collection(db, "chats", currentChatId, "messages"), { role: "ai", text: fullText, timestamp: serverTimestamp() }).catch(() => {});
     }
     
   } catch (err) {
